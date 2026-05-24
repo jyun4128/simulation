@@ -3,419 +3,538 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>자율주행 초음파 혼선 방지 시뮬레이션 (Random Delay 방식)</title>
+    <title>자동차 초음파 센서 혼선 및 보정 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        physicsDark: '#0f172a',
+                        physicsCard: '#1e293b',
+                        accentBlue: '#38bdf8',
+                        accentRed: '#f43f5e',
+                        accentGreen: '#34d399',
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --accent-blue: #38bdf8;
-            --accent-green: #34d399;
-            --accent-red: #f87171;
-        }
-
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap');
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
+            font-family: 'Pretendard', sans-serif;
+            background-color: #0f172a;
         }
-
-        h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-            color: var(--text-main);
-        }
-
-        .subtitle {
-            color: var(--text-muted);
-            font-size: 14px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .container {
-            width: 1000px;
-            background: var(--card-bg);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-        }
-
-        /* 도로 및 차량 애니메이션 영역 */
-        .road-environment {
-            width: 100%;
-            height: 160px;
-            background: #334155;
-            border-radius: 12px;
-            position: relative;
-            overflow: hidden;
-            margin-bottom: 20px;
-            border-bottom: 4px dashed #64748b;
-            border-top: 4px dashed #64748b;
-        }
-
-        .car {
-            width: 120px;
-            height: 60px;
-            border-radius: 8px;
-            position: absolute;
-            top: 50px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-weight: bold;
-            font-size: 13px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-        }
-
-        .car-a {
-            background-color: #0284c7; /* 앞차 */
-            left: 550px;
-        }
-
-        .car-b {
-            background-color: #047857; /* 뒷차 */
-            left: 150px;
-        }
-
-        .sensor-label {
-            font-size: 10px;
-            opacity: 0.9;
-            margin-top: 2px;
-        }
-
         /* 파동 애니메이션 효과 */
-        .wave {
+        @keyframes pulse-wave {
+            0% { transform: scale(1); opacity: 0.8; }
+            100% { transform: scale(3.5); opacity: 0; }
+        }
+        .sonar-wave {
             position: absolute;
-            top: 80px;
-            height: 2px;
-            background: transparent;
+            border: 2px solid;
             border-radius: 50%;
-            pointer-events: none;
-            opacity: 0;
-        }
-
-        @keyframes wave-expand-left {
-            0% { width: 0; left: 550px; border-left: 4px solid var(--accent-blue); opacity: 1; }
-            100% { width: 400px; left: 150px; border-left: 20px solid transparent; opacity: 0; }
-        }
-
-        @keyframes wave-expand-right {
-            0% { width: 0; left: 270px; border-right: 4px solid var(--accent-green); opacity: 1; }
-            100% { width: 400px; left: 270px; border-right: 20px solid transparent; opacity: 0; }
-        }
-
-        .wave-a-active { animation: wave-expand-left 0.6s linear forwards; }
-        .wave-b-active { animation: wave-expand-right 0.6s linear forwards; }
-
-        /* 간섭 경고 표시 */
-        .crosstalk-alert {
-            position: absolute;
-            top: 15px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(248, 113, 113, 0.2);
-            border: 1px solid var(--accent-red);
-            color: var(--accent-red);
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            display: none;
-        }
-
-        /* 상태 판넬 및 컨트롤 */
-        .panel {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .status-box {
-            background: rgba(15, 23, 42, 0.4);
-            padding: 16px;
-            border-radius: 8px;
-            border: 1px solid #475569;
-        }
-
-        .status-title {
-            font-size: 14px;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .status-value {
-            font-size: 20px;
-            font-weight: bold;
-            font-family: monospace;
-        }
-
-        .controls {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-
-        button {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            padding: 10px 24px;
-            font-size: 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.2s;
-        }
-
-        button:hover { background: #2563eb; }
-        button.stop { background: #ef4444; }
-        button.stop:hover { background: #dc2626; }
-
-        /* 그래프 스크롤 영역 */
-        .graph-container {
-            width: 100%;
-            height: 180px;
-            background: #0f172a;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .graph-grid {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background-image: linear-gradient(rgba(51, 65, 85, 0.3) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(51, 65, 85, 0.3) 1px, transparent 1px);
-            background-size: 20px 20px;
-        }
-
-        .graph-line-desc {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            font-size: 11px;
-            display: flex;
-            gap: 15px;
-            background: rgba(15, 23, 42, 0.8);
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-
-        .desc-item span {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            margin-right: 4px;
-            border-radius: 2px;
-        }
-
-        .dot {
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            bottom: 0;
+            animation: pulse-wave 1.5s infinite linear;
         }
     </style>
 </head>
-<body>
+<body class="text-slate-100 min-h-screen p-4 md:p-8">
 
-    <h1>자율주행 차량 간 초음파 신호 혼선 회피 시뮬레이션</h1>
-    <div class="subtitle">독립적인 두 차량이 통신 없이 각자 무작위 지연(Random Delay)으로 혼선을 스스로 회피하는 가상 도로 환경</div>
+    <div class="max-w-6xl mx-auto space-y-6">
+        
+        <header class="text-center md:text-left flex flex-col md:flex-row items-center justify-between border-b border-slate-700 pb-6">
+            <div>
+                <span class="px-3 py-1 text-xs font-semibold bg-sky-500/20 text-sky-400 rounded-full border border-sky-500/30">고등학교 물리 I / II 수행평가</span>
+                <h1 class="text-3xl md:text-4xl font-extrabold mt-2 tracking-tight">
+                    초음파 센서 <span class="text-sky-400">신호 혼선(Crosstalk)</span> 탐구 시뮬레이터
+                </h1>
+                <p class="text-slate-400 mt-1">파동의 중첩 원리 이해와 난수 기반 지연(Random Delay)을 통한 데이터 복구</p>
+            </div>
+            <div class="mt-4 md:mt-0 flex gap-3">
+                <div class="bg-physicsCard border border-slate-700 px-4 py-2 rounded-lg text-sm text-center">
+                    <span class="block text-xs text-slate-400">파동 속력 설정</span>
+                    <span class="font-semibold text-sky-400">음속 v ≈ 340 m/s</span>
+                </div>
+            </div>
+        </header>
 
-    <div class="container">
-        <div class="road-environment">
-            <div class="crosstalk-alert" id="crosstalkAlert">⚠️ 신호 중첩 발생 (간섭 위험)!</div>
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
-            <div class="car car-a" id="carA">
-                <span>차량 A (앞차)</span>
-                <span class="sensor-label">◀ 후방 초음파</span>
-            </div>
-            <div class="wave" id="waveA"></div>
+            <div class="lg:col-span-7 space-y-6">
+                
+                <div class="bg-physicsCard border border-slate-700 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-car text-sky-400"></i>
+                            차량 접근 및 파동 간섭 애니메이션 (모의 실험)
+                        </h2>
+                        <span id="crosstalk-alert" class="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            신호 상태 양호
+                        </span>
+                    </div>
 
-            <div class="car car-b" id="carB">
-                <span>차량 B (뒷차)</span>
-                <span class="sensor-label">전방 초음파 ▶</span>
+                    <div class="bg-slate-950 h-44 rounded-xl relative overflow-hidden flex items-center border border-slate-800">
+                        <div class="absolute inset-x-0 h-0.5 border-t-2 border-dashed border-slate-700"></div>
+
+                        <div id="car-left" class="absolute left-[10%] z-10 transition-all duration-100 ease-linear" style="transform: translateY(-50%); top: 50%;">
+                            <div class="relative flex flex-col items-center">
+                                <span class="text-xs bg-rose-500 text-white font-bold px-2 py-0.5 rounded shadow mb-1">차량 A</span>
+                                <svg class="w-24 h-12 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]" viewBox="0 0 100 50" fill="currentColor">
+                                    <path d="M15,30 L85,30 C90,30 95,25 95,20 L95,15 C95,10 85,5 70,5 L30,5 C15,5 5,10 5,15 L5,20 C5,25 10,30 15,30 Z" />
+                                    <circle cx="25" cy="35" r="8" fill="#475569" stroke="#1e293b" stroke-width="2"/>
+                                    <circle cx="75" cy="35" r="8" fill="#475569" stroke="#1e293b" stroke-width="2"/>
+                                    <rect x="92" y="12" width="6" height="8" rx="1" fill="#fff" class="animate-pulse"/>
+                                </svg>
+                                <div id="wave-a" class="sonar-wave absolute right-0 top-1/2 border-rose-500/60 w-4 h-4" style="margin-top: -8px; display: none;"></div>
+                            </div>
+                        </div>
+
+                        <div id="car-right" class="absolute right-[10%] z-10 transition-all duration-100 ease-linear" style="transform: translateY(-50%); top: 50%;">
+                            <div class="relative flex flex-col items-center">
+                                <span class="text-xs bg-sky-500 text-white font-bold px-2 py-0.5 rounded shadow mb-1">차량 B</span>
+                                <svg class="w-24 h-12 text-sky-400 drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]" viewBox="0 0 100 50" fill="currentColor" style="transform: scaleX(-1);">
+                                    <path d="M15,30 L85,30 C90,30 95,25 95,20 L95,15 C95,10 85,5 70,5 L30,5 C15,5 5,10 5,15 L5,20 C5,25 10,30 15,30 Z" />
+                                    <circle cx="25" cy="35" r="8" fill="#475569" stroke="#1e293b" stroke-width="2"/>
+                                    <circle cx="75" cy="35" r="8" fill="#475569" stroke="#1e293b" stroke-width="2"/>
+                                    <rect x="92" y="12" width="6" height="8" rx="1" fill="#fff" class="animate-pulse"/>
+                                </svg>
+                                <div id="wave-b" class="sonar-wave absolute left-0 top-1/2 border-sky-500/60 w-4 h-4" style="margin-top: -8px; display: none;"></div>
+                            </div>
+                        </div>
+
+                        <div id="interference-zone" class="absolute inset-0 bg-rose-500/10 flex items-center justify-center opacity-0 transition-opacity duration-300 pointer-events-none">
+                            <span class="text-xs font-bold text-rose-500 border border-rose-500/30 px-3 py-1.5 rounded-full bg-slate-950/90 animate-bounce">
+                                <i class="fa-solid fa-triangle-exclamation mr-1"></i> 파동 간섭 및 중첩 영역 (혼선 유발 수신부 오류)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 mt-4 text-center">
+                        <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                            <span class="block text-xs text-slate-400">현재 실제 거리</span>
+                            <span id="current-distance" class="text-lg font-bold text-sky-400">150 cm</span>
+                        </div>
+                        <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                            <span class="block text-xs text-slate-400">차량 충돌 확률</span>
+                            <span id="risk-factor" class="text-lg font-bold text-emerald-400">0%</span>
+                        </div>
+                        <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                            <span class="block text-xs text-slate-400">LED 경보등</span>
+                            <span id="warning-led" class="inline-block mt-1 w-4 h-4 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-physicsCard border border-slate-700 rounded-2xl p-6 shadow-xl">
+                    <h3 class="text-base font-bold mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-sky-400"></i>
+                        시뮬레이션 조작 패널
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-400 mb-1.5">아두이노 소스코드 제어 필터</label>
+                                <div class="grid grid-cols-2 gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                                    <button onclick="setCorrectionMode(false)" id="btn-mode-raw" class="py-2.5 rounded-lg text-sm font-bold transition-all bg-rose-500 text-white shadow-md">
+                                        보정 전 (고정 주기)
+                                    </button>
+                                    <button onclick="setCorrectionMode(true)" id="btn-mode-fixed" class="py-2.5 rounded-lg text-sm font-bold transition-all text-slate-400 hover:text-white">
+                                        보정 후 (난수 지연)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col justify-end gap-2">
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="toggleSimulation()" id="btn-play" class="bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-sky-500/20 flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-play"></i> 시뮬레이션 시작
+                                </button>
+                                <button onclick="resetSimulation()" class="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 px-4 rounded-xl transition-all border border-slate-600 flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-rotate-left"></i> 초기화
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
-            <div class="wave" id="waveB"></div>
+
+            <div class="lg:col-span-5 space-y-6">
+                
+                <div class="bg-physicsCard border border-slate-700 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <h2 class="text-lg font-bold flex items-center gap-2">
+                                <i class="fa-solid fa-chart-line text-sky-400"></i>
+                                센서 수신 거리 측정 좌표평면
+                            </h2>
+                        </div>
+                        <p class="text-xs text-slate-400 mb-4">X축: 수신 샘플 타임라인, Y축: 계산된 상대 물리적 거리 (cm)</p>
+                    </div>
+
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 h-[280px] flex items-center justify-center">
+                        <canvas id="realtimeChart" class="w-full h-full"></canvas>
+                    </div>
+
+                    <div class="mt-4 text-xs space-y-2 border-t border-slate-800 pt-4">
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-1.5">
+                                <span class="w-3 h-0.5 bg-rose-500 inline-block"></span>
+                                <span class="text-slate-300 font-medium">측정된 가공 데이터 (Raw Data)</span>
+                            </div>
+                            <span id="graph-deviation-text" class="text-rose-400 font-bold">오차 발생 가능</span>
+                        </div>
+                        <p class="text-slate-400 leading-relaxed">
+                            <strong class="text-slate-300">물리적 원리:</strong> 두 센서의 측정 주기 불일치 및 공진으로 발생한 파동 중첩이 트리거 신호를 교란하여 거리 변동(Spike)이 일어납니다.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+
         </div>
 
-        <div class="panel">
-            <div class="status-box" style="border-left: 4px solid var(--accent-blue);">
-                <div class="status-title">차량 A (앞차) 발사 주기 <span id="delayA-text" style="color:var(--accent-blue)">대기 중</span></div>
-                <div class="status-value" id="valA">-</div>
+        <div class="bg-physicsCard border border-slate-700 rounded-2xl p-6 shadow-xl">
+            <div class="flex border-b border-slate-700 gap-4 mb-4">
+                <button onclick="switchTab('tab-physics')" id="btn-tab-physics" class="pb-3 text-sm font-bold border-b-2 border-sky-400 text-sky-400 transition-all">
+                    물리적 현상 분석 (보고서용 내용)
+                </button>
+                <button onclick="switchTab('tab-arduino')" id="btn-tab-arduino" class="pb-3 text-sm font-bold text-slate-400 hover:text-white transition-all">
+                    아두이노 해결 코드
+                </button>
             </div>
-            <div class="status-box" style="border-left: 4px solid var(--accent-green);">
-                <div class="status-title">차량 B (뒷차) 발사 주기 <span id="delayB-text" style="color:var(--accent-green)">대기 중</span></div>
-                <div class="status-value" id="valB">-</div>
+
+            <div id="tab-physics" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+                        <h4 class="font-bold text-sky-400 mb-2"><i class="fa-solid fa-wave-square mr-1"></i> 파동의 독립성과 중첩 원리</h4>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            두 개의 초음파(음파)는 서로 마주 보고 진행하더라도 독립적으로 진행 방향을 유지합니다. 그러나 겹치는 순간, 파동의 매질 변위는 두 변위의 벡터 합과 같은 <strong>중첩 원리</strong>를 따릅니다.
+                        </p>
+                    </div>
+                    <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+                        <h4 class="font-bold text-rose-400 mb-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 센서 신호 혼선(Crosstalk)</h4>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            차량 A에서 발사한 고유의 펄스 음파를 차량 B의 수신부(Echo)가 자신이 보낸 반사파로 착각하여 타이밍 연산을 조기 차단함으로써, 거리가 극도로 가깝거나(0) 비정상적인 값으로 측정되는 오류를 범하게 됩니다.
+                        </p>
+                    </div>
+                    <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+                        <h4 class="font-bold text-emerald-400 mb-2"><i class="fa-solid fa-dice mr-1"></i> 난수 기반 지연 (Random Delay) 회피</h4>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            두 차량이 통신할 수 없는 상황에서 고정된 발사 주기를 가지면, 주기가 겹칠 때 연속적인 혼선이 발생합니다. 이를 막기 위해 다음 초음파를 쏠 때까지의 대기 시간(Delay)을 컴퓨터가 임의의 난수(예: 30~70ms)로 매번 다르게 설정합니다. 우연히 한 번 겹치더라도 다음번엔 주기가 어긋나므로 연속 혼선 확률이 0에 수렴합니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-arduino" class="hidden space-y-4">
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 font-mono text-xs overflow-x-auto text-emerald-400">
+                    <span class="text-slate-400 block mb-2">// 아두이노 보정 코드 - 난수 발생(Random Delay)을 통한 혼선 회피 알고리즘</span>
+<pre>
+const int trigA = 2; // 내 차량 송신기
+const int echoA = 3; // 내 차량 수신기
+const int ledAlert = 13; // 충돌 알림 LED
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(trigA, OUTPUT); pinMode(echoA, INPUT);
+  pinMode(ledAlert, OUTPUT);
+  // 아날로그 핀의 노이즈를 읽어 완벽한 난수 시드(Seed) 생성
+  randomSeed(analogRead(0)); 
+}
+
+void loop() {
+  long duration, distance;
+
+  // --- 초음파 발사 및 측정 ---
+  digitalWrite(trigA, LOW); delayMicroseconds(2);
+  digitalWrite(trigA, HIGH); delayMicroseconds(10);
+  digitalWrite(trigA, LOW);
+  duration = pulseIn(echoA, HIGH);
+  distance = duration * 0.034 / 2; // 거리 계산 공식
+
+  Serial.println(distance);
+
+  if (distance > 0 && distance < 30) {
+    digitalWrite(ledAlert, HIGH); // 경보 켬
+  } else {
+    digitalWrite(ledAlert, LOW);  // 경보 끔
+  }
+
+  // 🎲 핵심 포인트: 난수 기반 무작위 지연 (Random Delay)
+  // 상대방 차량과 주기가 동기화되어 연속 혼선이 일어나는 것을 방지하기 위해
+  // 30ms ~ 70ms 사이의 랜덤한 시간 동안 대기 후 다음 사이클을 시작함.
+  long randomWait = random(30, 71); 
+  delay(randomWait); 
+}
+</pre>
+                </div>
             </div>
         </div>
 
-        <div class="controls">
-            <button id="btnStart" onclick="startSimulation()">시뮬레이션 시작</button>
-            <button id="btnStop" class="stop" onclick="stopSimulation()">정지</button>
-        </div>
-
-        <div class="graph-container" id="graphContainer">
-            <div class="graph-grid"></div>
-            <div class="graph-line-desc">
-                <div class="desc-item"><span style="background: var(--accent-blue);"></span>차량 A 주기</div>
-                <div class="desc-item"><span style="background: var(--accent-green);"></span>차량 B 주기</div>
-                <div class="desc-item"><span style="background: var(--accent-red);"></span>중첩(혼선 위치)</div>
-            </div>
-            </div>
     </div>
 
     <script>
-        let isRunning = false;
-        let timerA = null;
-        let timerB = null;
-        let graphTimer = null;
-        let globalTime = 0;
-        
-        const waveA = document.getElementById('waveA');
-        const waveB = document.getElementById('waveB');
-        const alertBox = document.getElementById('crosstalkAlert');
-        const graphContainer = document.getElementById('graphContainer');
+        // Simulation Global State
+        let isSimulating = false;
+        let isCorrected = false; // Mode toggle: False = Raw(Uncorrected), True = Corrected
+        let currentDistance = 150; // Starting physical distance in cm
+        let timeStep = 0;
+        let simInterval = null;
+        let chartInstance = null;
 
-        let lastA_Time = 0;
-        let lastB_Time = 0;
-
-        function startSimulation() {
-            if (isRunning) return;
-            isRunning = true;
-            document.getElementById('btnStart').innerText = "시뮬레이션 진행 중...";
-            
-            globalTime = 0;
-            // 그래프 리프레시용 타이머
-            graphTimer = setInterval(() => {
-                globalTime += 10;
-                scrollGraph();
-            }, 50);
-
-            // 차량 A 루프 시작 (각자 독립적으로 구동됨)
-            runVehicleA();
-            // 차량 B 루프 시작
-            runVehicleB();
+        // Initialize Chart.js Graph
+        function initChart() {
+            const ctx = document.getElementById('realtimeChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [], // Time series data (Time steps)
+                    datasets: [{
+                        label: '측정 거리 (cm)',
+                        data: [],
+                        borderColor: '#f43f5e', // Uncorrected Red
+                        backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 2,
+                        fill: true,
+                        tension: 0.15
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            title: { display: true, text: '샘플 주기 (Time Steps)', color: '#94a3b8' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        y: {
+                            min: 0,
+                            max: 160,
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            title: { display: true, text: '거리 측정값 (cm)', color: '#94a3b8' },
+                            ticks: { 
+                                stepSize: 20,
+                                color: '#94a3b8'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
         }
 
-        function stopSimulation() {
-            isRunning = false;
-            clearTimeout(timerA);
-            clearTimeout(timerB);
-            clearInterval(graphTimer);
-            document.getElementById('btnStart').innerText = "시뮬레이션 시작";
-            document.getElementById('delayA-text').innerText = "정지됨";
-            document.getElementById('delayB-text').innerText = "정지됨";
-        }
-
-        // 차량 A의 무작위 지연 제어 알고리즘 루프
-        function runVehicleA() {
-            if (!isRunning) return;
-
-            // 1. 초음파 발사 및 애니메이션 트리거
-            waveA.classList.remove('wave-a-active');
-            void waveA.offsetWidth; // 리플로우 강제 유발 (애니메이션 리셋)
-            waveA.classList.add('wave-a-active');
-            
-            lastA_Time = Date.now();
-            checkCrosstalk();
-
-            // 2. 난수 생성 (실제 도로 상황을 모사한 400ms ~ 900ms 사이의 완전한 무작위 변동 주기)
-            let randomInterval = Math.floor(Math.random() * (900 - 400 + 1)) + 400;
-            
-            document.getElementById('valA').innerText = `Ping 발사! [지연: ${randomInterval}ms]`;
-            document.getElementById('delayA-text').innerText = `주기 결정: ${randomInterval}ms`;
-            drawDataPoint(randomInterval, 'var(--accent-blue)');
-
-            // 3. 생성된 고유 난수만큼 쉬고 다음 초음파 발사
-            timerA = setTimeout(runVehicleA, randomInterval);
-        }
-
-        // 차량 B의 무작위 지연 제어 알고리즘 루프
-        function runVehicleB() {
-            if (!isRunning) return;
-
-            // 1. 초음파 발사 및 애니메이션 트리거
-            waveB.classList.remove('wave-b-active');
-            void waveB.offsetWidth;
-            waveB.classList.add('wave-b-active');
-
-            lastB_Time = Date.now();
-            checkCrosstalk();
-
-            // 2. 차량 B도 통신 없이 독자적인 난수 주기 생성
-            let randomInterval = Math.floor(Math.random() * (900 - 400 + 1)) + 400;
-
-            document.getElementById('valB').innerText = `Ping 발사! [지연: ${randomInterval}ms]`;
-            document.getElementById('delayB-text').innerText = `주기 결정: ${randomInterval}ms`;
-            drawDataPoint(randomInterval, 'var(--accent-green)');
-
-            // 3. 독립적으로 다음 발사 대기
-            timerB = setTimeout(runVehicleB, randomInterval);
-        }
-
-        // 두 차량의 신호가 우연히 완전히 겹쳤는지 판별하는 함수
-        function checkCrosstalk() {
-            let timeDiff = Math.abs(lastA_Time - lastB_Time);
-            // 두 독립 차량의 발사 시차가 60ms 이내면 물리적 공간 안에서 파동이 중첩되어 혼선이 생겼다고 간주함
-            if (timeDiff < 60) {
-                alertBox.style.display = 'block';
-                drawDataPoint(650, 'var(--accent-red)', true); // 혼선 발생 표시
-                setTimeout(() => { alertBox.style.display = 'none'; }, 400);
-            }
-        }
-
-        // 실시간 실측 그래프 드로잉 로직
-        let dotElements = [];
-        function drawDataPoint(intervalValue, color, isAlert = false) {
-            const dot = document.createElement('div');
-            dot.className = 'dot';
-            dot.style.backgroundColor = color;
-            
-            // 값을 높이로 환산 (400~900ms 값을 그래프 높이 20~150px 로 매핑)
-            let mappedHeight = ((intervalValue - 400) / 500) * 120 + 20;
-            if (isAlert) {
-                mappedHeight = 150;
-                dot.style.width = '8px';
-                dot.style.height = '8px';
-                dot.style.zIndex = '10';
-            }
-            
-            dot.style.bottom = `${mappedHeight}px`;
-            dot.style.left = '980px'; // 우측 끝에서 시작
-            
-            graphContainer.appendChild(dot);
-            dotElements.push({ element: dot, left: 980 });
-        }
-
-        // 그래프 좌측 스크롤 시뮬레이션
-        function scrollGraph() {
-            for (let i = dotElements.length - 1; i >= 0; i--) {
-                dotElements[i].left -= 4;
-                dotElements[i].element.style.left = `${dotElements[i].left}px`;
+        // Start/Pause Toggle Simulation
+        function toggleSimulation() {
+            const playBtn = document.getElementById('btn-play');
+            if (isSimulating) {
+                // Pause simulation
+                clearInterval(simInterval);
+                isSimulating = false;
+                playBtn.innerHTML = '<i class="fa-solid fa-play"></i> 시뮬레이션 시작';
+                playBtn.className = playBtn.className.replace('bg-amber-500', 'bg-sky-500').replace('hover:bg-amber-600', 'hover:bg-sky-600');
+                // Turn off waves
+                document.getElementById('wave-a').style.display = 'none';
+                document.getElementById('wave-b').style.display = 'none';
+            } else {
+                // Start simulation
+                isSimulating = true;
+                playBtn.innerHTML = '<i class="fa-solid fa-pause"></i> 일시 정지';
+                playBtn.className = playBtn.className.replace('bg-sky-500', 'bg-amber-500').replace('hover:bg-sky-600', 'hover:bg-amber-600');
                 
-                // 화면 밖으로 나간 점들은 메모리 최적화를 위해 제거
-                if (dotElements[i].left < 0) {
-                    dotElements[i].element.remove();
-                    dotElements.splice(i, 1);
+                // Show wave indicators
+                document.getElementById('wave-a').style.display = 'block';
+                document.getElementById('wave-b').style.display = 'block';
+
+                simInterval = setInterval(runSimulationCycle, 150);
+            }
+        }
+
+        // Running Simulation Algorithm
+        function runSimulationCycle() {
+            if (currentDistance <= 15) {
+                // Terminate at close safety critical zone
+                clearInterval(simInterval);
+                isSimulating = false;
+                document.getElementById('btn-play').innerHTML = '<i class="fa-solid fa-flag-checkered"></i> 종료 완료';
+                document.getElementById('btn-play').disabled = true;
+                document.getElementById('wave-a').style.display = 'none';
+                document.getElementById('wave-b').style.display = 'none';
+                return;
+            }
+
+            // Move cars toward each other
+            currentDistance -= 1.5;
+            timeStep++;
+
+            // Update car DOM position
+            const movementPercent = 10 + (150 - currentDistance) * 0.23; 
+            document.getElementById('car-left').style.left = `${movementPercent}%`;
+            document.getElementById('car-right').style.right = `${movementPercent}%`;
+
+            // Calculate measured distance
+            let measuredVal = currentDistance;
+            
+            // Simulation physics logic for interference:
+            if (!isCorrected) {
+                // 보정 전: 주기가 같아 한 번 겹치면 연속적으로 치명적 상쇄간섭/혼선 발생
+                if (currentDistance < 80) {
+                    document.getElementById('interference-zone').style.opacity = '1';
+                    document.getElementById('crosstalk-alert').innerText = '⚠️ 고정 주기 충돌 (연속 혼선)';
+                    document.getElementById('crosstalk-alert').className = 'px-2.5 py-1 text-xs font-bold rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20';
+
+                    if (Math.random() < 0.4) {
+                        // 높은 확률로 거리 측정 실패 (0 또는 최대치로 튐)
+                        measuredVal = Math.random() > 0.5 ? 2.5 : 155; 
+                    }
+                } else {
+                    document.getElementById('interference-zone').style.opacity = '0';
+                    document.getElementById('crosstalk-alert').innerText = '신호 상태 양호';
+                    document.getElementById('crosstalk-alert').className = 'px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+                }
+            } else {
+                // 보정 후: 난수 기반 무작위 지연(Random Delay) 방식
+                document.getElementById('interference-zone').style.opacity = '0';
+                
+                // 두 차량의 난수 딜레이가 우연히 정확히 일치하여 딱 한 번 혼선이 발생할 확률 (약 3%로 모델링)
+                if (currentDistance < 80 && Math.random() < 0.03) {
+                    measuredVal = Math.random() > 0.5 ? 2.5 : 155; // 단발성 스파이크
+                    document.getElementById('crosstalk-alert').innerText = '⚡ 단발성 혼선 (즉각 회피됨)';
+                    document.getElementById('crosstalk-alert').className = 'px-2.5 py-1 text-xs font-bold rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20';
+                } else {
+                    document.getElementById('crosstalk-alert').innerText = '🎲 난수 지연 (혼선 회피 기동 중)';
+                    document.getElementById('crosstalk-alert').className = 'px-2.5 py-1 text-xs font-bold rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20';
+                    
+                    // 정상 측정 중에도 센서의 자연적인 측정 오차(Jitter)는 반영함
+                    let naturalError = (Math.random() * 4) - 2; 
+                    measuredVal += naturalError;
+                    if(measuredVal < 0) measuredVal = 0;
                 }
             }
+
+            // Update safety LED indicators based on actual (and possibly faulty) measured value
+            const led = document.getElementById('warning-led');
+            if (measuredVal < 30) {
+                // Danger
+                led.className = 'inline-block mt-1 w-4 h-4 rounded-full bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.8)] animate-ping';
+                document.getElementById('risk-factor').innerText = '위험 (충돌)';
+                document.getElementById('risk-factor').className = 'text-lg font-bold text-rose-400';
+            } else if (measuredVal >= 30 && measuredVal < 80) {
+                // Caution
+                led.className = 'inline-block mt-1 w-4 h-4 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)]';
+                document.getElementById('risk-factor').innerText = '주의';
+                document.getElementById('risk-factor').className = 'text-lg font-bold text-amber-400';
+            } else {
+                // Safe
+                led.className = 'inline-block mt-1 w-4 h-4 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]';
+                document.getElementById('risk-factor').innerText = '안전';
+                document.getElementById('risk-factor').className = 'text-lg font-bold text-emerald-400';
+            }
+
+            // Feed Data to Graphics Interface
+            document.getElementById('current-distance').innerText = `${Math.round(measuredVal)} cm`;
+            
+            chartInstance.data.labels.push(timeStep);
+            chartInstance.data.datasets[0].data.push(measuredVal);
+            
+            // Auto slide logic for chart to maintain visibility
+            if (chartInstance.data.labels.length > 25) {
+                chartInstance.data.labels.shift();
+                chartInstance.data.datasets[0].data.shift();
+            }
+            chartInstance.update();
+        }
+
+        // Toggle Correction Filter Function
+        function setCorrectionMode(corrected) {
+            isCorrected = corrected;
+            const btnRaw = document.getElementById('btn-mode-raw');
+            const btnFixed = document.getElementById('btn-mode-fixed');
+            
+            if (corrected) {
+                // Corrected Mode Active
+                btnFixed.className = 'py-2.5 rounded-lg text-sm font-bold transition-all bg-sky-500 text-slate-950 shadow-md';
+                btnRaw.className = 'py-2.5 rounded-lg text-sm font-bold transition-all text-slate-400 hover:text-white';
+                chartInstance.data.datasets[0].borderColor = '#38bdf8'; // Blue
+                chartInstance.data.datasets[0].backgroundColor = 'rgba(56, 189, 248, 0.1)';
+                document.getElementById('graph-deviation-text').innerText = '오차 제거 완료';
+                document.getElementById('graph-deviation-text').className = 'text-sky-400 font-bold';
+            } else {
+                // Raw Mode Active
+                btnRaw.className = 'py-2.5 rounded-lg text-sm font-bold transition-all bg-rose-500 text-white shadow-md';
+                btnFixed.className = 'py-2.5 rounded-lg text-sm font-bold transition-all text-slate-400 hover:text-white';
+                chartInstance.data.datasets[0].borderColor = '#f43f5e'; // Red
+                chartInstance.data.datasets[0].backgroundColor = 'rgba(244, 63, 94, 0.1)';
+                document.getElementById('graph-deviation-text').innerText = '오차 발생 가능';
+                document.getElementById('graph-deviation-text').className = 'text-rose-400 font-bold';
+            }
+            chartInstance.update();
+        }
+
+        // Reset Simulator
+        function resetSimulation() {
+            clearInterval(simInterval);
+            isSimulating = false;
+            currentDistance = 150;
+            timeStep = 0;
+            
+            // Reset DOM UI elements
+            document.getElementById('car-left').style.left = '10%';
+            document.getElementById('car-right').style.right = '10%';
+            document.getElementById('current-distance').innerText = '150 cm';
+            document.getElementById('risk-factor').innerText = '안전';
+            document.getElementById('risk-factor').className = 'text-lg font-bold text-emerald-400';
+            document.getElementById('warning-led').className = 'inline-block mt-1 w-4 h-4 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]';
+            document.getElementById('interference-zone').style.opacity = '0';
+            document.getElementById('crosstalk-alert').innerText = '신호 상태 양호';
+            document.getElementById('crosstalk-alert').className = 'px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+
+            const playBtn = document.getElementById('btn-play');
+            playBtn.innerHTML = '<i class="fa-solid fa-play"></i> 시뮬레이션 시작';
+            playBtn.disabled = false;
+            playBtn.className = 'bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-sky-500/20 flex items-center justify-center gap-2';
+
+            document.getElementById('wave-a').style.display = 'none';
+            document.getElementById('wave-b').style.display = 'none';
+
+            // Clear Chart
+            chartInstance.data.labels = [];
+            chartInstance.data.datasets[0].data = [];
+            chartInstance.update();
+        }
+
+        // Sub-tabs handling inside card
+        function switchTab(tabId) {
+            const tabPhysics = document.getElementById('tab-physics');
+            const tabArduino = document.getElementById('tab-arduino');
+            const btnPhysics = document.getElementById('btn-tab-physics');
+            const btnArduino = document.getElementById('btn-tab-arduino');
+
+            if (tabId === 'tab-physics') {
+                tabPhysics.classList.remove('hidden');
+                tabArduino.classList.add('hidden');
+                btnPhysics.className = 'pb-3 text-sm font-bold border-b-2 border-sky-400 text-sky-400 transition-all';
+                btnArduino.className = 'pb-3 text-sm font-bold text-slate-400 hover:text-white transition-all';
+            } else {
+                tabArduino.classList.remove('hidden');
+                tabPhysics.classList.add('hidden');
+                btnArduino.className = 'pb-3 text-sm font-bold border-b-2 border-sky-400 text-sky-400 transition-all';
+                btnPhysics.className = 'pb-3 text-sm font-bold text-slate-400 hover:text-white transition-all';
+            }
+        }
+
+        // Window onload initialization
+        window.onload = function() {
+            initChart();
         }
     </script>
 </body>
